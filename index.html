@@ -445,7 +445,10 @@ function initWheel(type) {
         pulseWheel(type, false);
       }
       
-      if (prev < getTarget(type) && newReps >= getTarget(type)) triggerFlash();
+if (prev < getTarget(type) && newReps >= getTarget(type)) {
+        triggerFlash();
+        playCelebration();
+      }
     }    drawWheel(type, contReps);
     document.getElementById(`count-${type}`).textContent = newReps;
     document.getElementById(`card-${type}`).classList.toggle('done', newReps >= getTarget(type));
@@ -625,7 +628,6 @@ function renderSummary() {
   document.body.classList.toggle('day-complete', dayDone);
   document.getElementById('dayBanner').classList.toggle('show', dayDone);
   if (dayDone && !wasComplete) {
-    playCelebration();
     if (navigator.vibrate) navigator.vibrate([50, 30, 50, 30, 100]);
     pulseWheel('a', true); pulseWheel('b', true);
   }
