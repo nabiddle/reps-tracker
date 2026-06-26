@@ -2,7 +2,7 @@
   "name": "Reps Tracker",
   "short_name": "Reps",
   "description": "Daily push up and sit up tracker with lap wheel",
-  "start_url": "/",
+  "start_url": "/reps-tracker/",
   "display": "standalone",
   "background_color": "#0d1f0f",
   "theme_color": "#f5c518",
