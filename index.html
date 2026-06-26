@@ -96,10 +96,10 @@
   .lap-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--track); transition: background 0.2s, transform 0.15s; }
   .lap-dot.filled { transform: scale(1.25); }
   .exercise-card.done .lap-dot.filled { background: var(--green-bright) !important; }
-  .btn-row { display: flex; gap: 8px; width: 100%; }
-  .btn-minus { flex: 1; background: var(--track); color: var(--muted); border: none; border-radius: 10px; padding: 10px 0; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity 0.15s, transform 0.1s; -webkit-tap-highlight-color: transparent; }
-  .btn-minus:active { transform: scale(0.95); opacity: 0.7; }
 
+
+
+  
   .action-row { width: calc(100% - 48px); display: flex; gap: 10px; margin-bottom: 18px; }
   .rest-btn, .reset-btn { flex: 1; background: var(--card); color: var(--muted); border: 1px solid var(--track); border-radius: 12px; padding: 11px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s; -webkit-tap-highlight-color: transparent; }
   .rest-btn.active { background: #1a1030; color: #c4b5fd; border-color: #c4b5fd44; }
@@ -220,7 +220,7 @@
       </div>
     </div>
     <div class="lap-dots" id="laps-a"></div>
-    <div class="btn-row"><button class="btn-minus" onclick="removeReps('a')">− 10</button></div>
+
   </div>
   <div class="exercise-card" id="card-b">
     <div class="exercise-label" id="label-b">Sit Ups</div>
@@ -232,8 +232,8 @@
       </div>
     </div>
     <div class="lap-dots" id="laps-b"></div>
-    <div class="btn-row"><button class="btn-minus" onclick="removeReps('b')">− 10</button></div>
-  </div>
+
+    </div>
 </div>
 
 <div class="action-row">
@@ -435,8 +435,15 @@ function initWheel(type) {
     const prev = today[type] || 0;
     today[type] = newReps;
     today[`${type}C`] = contReps;
-    if (newReps !== prev) { save(); if (prev < getTarget(type) && newReps >= getTarget(type)) triggerFlash(); }
-    drawWheel(type, contReps);
+    if (newReps !== prev) {
+      save();
+      if (newReps % 10 === 0 && newReps > 0) {
+        if (navigator.vibrate) navigator.vibrate([30, 10, 30]);
+      } else {
+        if (navigator.vibrate) navigator.vibrate(8);
+      }
+      if (prev < getTarget(type) && newReps >= getTarget(type)) triggerFlash();
+    }    drawWheel(type, contReps);
     document.getElementById(`count-${type}`).textContent = newReps;
     document.getElementById(`card-${type}`).classList.toggle('done', newReps >= getTarget(type));
     updateLapDots(type, newReps);
@@ -474,6 +481,32 @@ function triggerFlash() {
   f.classList.add('show'); setTimeout(() => f.classList.remove('show'), 700);
 }
 
+  function playCelebration() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const notes = [
+      { freq: 523.25, start: 0.00, dur: 0.12 },
+      { freq: 659.25, start: 0.11, dur: 0.12 },
+      { freq: 783.99, start: 0.22, dur: 0.12 },
+      { freq: 1046.5, start: 0.33, dur: 0.35 },
+    ];
+    notes.forEach(({ freq, start, dur }) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+      gain.gain.setValueAtTime(0, ctx.currentTime + start);
+      gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur + 0.05);
+    });
+    setTimeout(() => ctx.close(), 1000);
+  } catch(e) {}
+}
+  
 // ── Settings ───────────────────────────────────────────────────
 let settingsTempA = null, settingsTempB = null;
 
@@ -574,8 +607,13 @@ function renderSummary() {
 
   document.getElementById('todayTotal').textContent = total;
   document.getElementById('dailyTargetDisplay').textContent = dailyTarget;
+  const wasComplete = document.body.classList.contains('day-complete');
   document.body.classList.toggle('day-complete', dayDone);
   document.getElementById('dayBanner').classList.toggle('show', dayDone);
+  if (dayDone && !wasComplete) {
+    playCelebration();
+    if (navigator.vibrate) navigator.vibrate([50, 30, 50, 30, 100]);
+  }
 
   const actA = getActivity('a'), actB = getActivity('b');
   document.getElementById('weekLabelA').textContent = actA.short;
