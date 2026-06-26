@@ -439,9 +439,12 @@ function initWheel(type) {
       save();
       if (newReps % 10 === 0 && newReps > 0) {
         if (navigator.vibrate) navigator.vibrate([30, 10, 30]);
+        pulseWheel(type, true);
       } else {
         if (navigator.vibrate) navigator.vibrate(8);
+        pulseWheel(type, false);
       }
+      
       if (prev < getTarget(type) && newReps >= getTarget(type)) triggerFlash();
     }    drawWheel(type, contReps);
     document.getElementById(`count-${type}`).textContent = newReps;
@@ -480,30 +483,41 @@ function triggerFlash() {
   const f = document.getElementById('flash');
   f.classList.add('show'); setTimeout(() => f.classList.remove('show'), 700);
 }
-
-  function playCelebration() {
+function pulseWheel(type, strong) {
+  const el = document.getElementById(`wheel-${type}`);
+  el.style.transform = strong ? 'scale(1.06)' : 'scale(1.02)';
+  el.style.transition = 'transform 0.06s ease';
+  setTimeout(() => {
+    el.style.transform = 'scale(1)';
+  }, strong ? 120 : 80);
+}
+  
+function playCelebration() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const notes = [
-      { freq: 523.25, start: 0.00, dur: 0.12 },
-      { freq: 659.25, start: 0.11, dur: 0.12 },
-      { freq: 783.99, start: 0.22, dur: 0.12 },
-      { freq: 1046.5, start: 0.33, dur: 0.35 },
-    ];
-    notes.forEach(({ freq, start, dur }) => {
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
-      gain.gain.setValueAtTime(0, ctx.currentTime + start);
-      gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
-      osc.start(ctx.currentTime + start);
-      osc.stop(ctx.currentTime + start + dur + 0.05);
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioCtx();
+    ctx.resume().then(() => {
+      const notes = [
+        { freq: 523.25, start: 0.00, dur: 0.12 },
+        { freq: 659.25, start: 0.11, dur: 0.12 },
+        { freq: 783.99, start: 0.22, dur: 0.12 },
+        { freq: 1046.5, start: 0.33, dur: 0.35 },
+      ];
+      notes.forEach(({ freq, start, dur }) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+        gain.gain.setValueAtTime(0, ctx.currentTime + start);
+        gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + dur + 0.05);
+      });
+      setTimeout(() => ctx.close(), 1000);
     });
-    setTimeout(() => ctx.close(), 1000);
   } catch(e) {}
 }
   
@@ -613,6 +627,7 @@ function renderSummary() {
   if (dayDone && !wasComplete) {
     playCelebration();
     if (navigator.vibrate) navigator.vibrate([50, 30, 50, 30, 100]);
+    pulseWheel('a', true); pulseWheel('b', true);
   }
 
   const actA = getActivity('a'), actB = getActivity('b');
@@ -715,6 +730,21 @@ function render() {
 
 initWheel('a'); initWheel('b');
 render();
+
+// Unlock Web Audio on first user gesture (required by iOS Safari)
+let audioUnlocked = false;
+document.addEventListener('touchstart', function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const buf = ctx.createBuffer(1, 1, 22050);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start(0);
+  ctx.close();
+  document.removeEventListener('touchstart', unlockAudio);
+}, true);
 
 // Register service worker for PWA / offline support
 if ('serviceWorker' in navigator) {
