@@ -97,9 +97,6 @@
   .lap-dot.filled { transform: scale(1.25); }
   .exercise-card.done .lap-dot.filled { background: var(--green-bright) !important; }
 
-
-
-  
   .action-row { width: calc(100% - 48px); display: flex; gap: 10px; margin-bottom: 18px; }
   .rest-btn, .reset-btn { flex: 1; background: var(--card); color: var(--muted); border: 1px solid var(--track); border-radius: 12px; padding: 11px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s; -webkit-tap-highlight-color: transparent; }
   .rest-btn.active { background: #1a1030; color: #c4b5fd; border-color: #c4b5fd44; }
@@ -138,6 +135,9 @@
   .complete-flash { position: fixed; inset: 0; background: rgba(37,176,67,0.15); pointer-events: none; opacity: 0; transition: opacity 0.5s; z-index: 100; }
   .complete-flash.show { opacity: 1; }
 
+  /* Hidden haptic toggle (iOS Taptic hack) */
+  .haptic-holder { position: absolute; left: -9999px; width: 0; height: 0; overflow: hidden; }
+
   @media (min-width: 480px) {
     .wheels-row, .summary-strip, .action-row, .week-panel, .day-banner, .week-stats-panel { max-width: 420px; }
   }
@@ -145,6 +145,9 @@
 </head>
 <body>
 <div class="complete-flash" id="flash"></div>
+
+<!-- Hidden switch input used to trigger iOS haptic feedback -->
+<label class="haptic-holder" id="hapticLabel" aria-hidden="true"><input type="checkbox" switch></label>
 
 <!-- Settings -->
 <div class="settings-overlay" id="settingsOverlay" onclick="closeSettingsIfOutside(event)">
@@ -220,7 +223,6 @@
       </div>
     </div>
     <div class="lap-dots" id="laps-a"></div>
-
   </div>
   <div class="exercise-card" id="card-b">
     <div class="exercise-label" id="label-b">Sit Ups</div>
@@ -232,8 +234,7 @@
       </div>
     </div>
     <div class="lap-dots" id="laps-b"></div>
-
-    </div>
+  </div>
 </div>
 
 <div class="action-row">
@@ -303,16 +304,81 @@ const ACTIVITIES = [
   { id: 'lunges',   label: 'Lunges',    short: 'Lunge' },
 ];
 
-// Clearly distinct lap colour palettes
-// A (gold wheel): gold shades — dark gold -> bright gold -> orange gold -> yellow -> cream gold
 const LAP_COLORS_A = ['#c47f00','#e0a800','#f5c518','#ffe066','#fff0a0'];
-// B (green wheel): green shades — dark green -> mid green -> bright green -> lime -> yellow green
 const LAP_COLORS_B = ['#0a5c1e','#0f8c2c','#25b043','#4dd966','#a0f0a0'];
 
-function lapColor(type, lapIndex, totalLaps) {
+function lapColor(type, lapIndex) {
   const palette = type === 'a' ? LAP_COLORS_A : LAP_COLORS_B;
-  const idx = Math.min(lapIndex, palette.length - 1);
-  return palette[idx];
+  return palette[Math.min(lapIndex, palette.length - 1)];
+}
+
+// ── Audio: ONE shared context, created + resumed on first touch ──
+let sharedAudioCtx = null;
+function getAudioCtx() {
+  try {
+    if (!sharedAudioCtx) {
+      sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume();
+    }
+    return sharedAudioCtx;
+  } catch(e) { return null; }
+}
+
+function playLapComplete() {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(783.99, ctx.currentTime);
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.2);
+}
+
+function playDayComplete() {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const notes = [
+    { freq: 523.25, start: 0.00, dur: 0.12 },
+    { freq: 659.25, start: 0.11, dur: 0.12 },
+    { freq: 783.99, start: 0.22, dur: 0.12 },
+    { freq: 1046.5, start: 0.33, dur: 0.40 },
+  ];
+  notes.forEach(({ freq, start, dur }) => {
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+    gain.gain.setValueAtTime(0, ctx.currentTime + start);
+    gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+    osc.start(ctx.currentTime + start);
+    osc.stop(ctx.currentTime + start + dur + 0.05);
+  });
+}
+
+// ── Haptic: iOS Taptic via hidden switch input + visual pulse ──
+function haptic() {
+  // navigator.vibrate works on Android only; this label click pokes iOS Taptic
+  if (navigator.vibrate) navigator.vibrate(15);
+  try { document.getElementById('hapticLabel').click(); } catch(e) {}
+}
+
+function pulseWheel(type, strong) {
+  const el = document.getElementById(`wheel-${type}`);
+  const scale = strong ? 'scale(1.12)' : 'scale(1.05)';
+  const dur = strong ? 180 : 100;
+  el.style.transition = 'transform 0.08s ease-out';
+  el.style.transform = scale;
+  setTimeout(() => {
+    el.style.transition = 'transform 0.12s ease-in';
+    el.style.transform = 'scale(1)';
+  }, dur);
 }
 
 // ── State ──────────────────────────────────────────────────────
@@ -364,38 +430,34 @@ function drawWheel(type, continuousReps) {
   const done = continuousReps >= target;
   const START = -Math.PI / 2, FULL = Math.PI * 2;
 
-  // Track
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, FULL);
   ctx.strokeStyle = '#1e3522'; ctx.lineWidth = SW; ctx.lineCap = 'butt'; ctx.stroke();
 
   if (done) {
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, FULL);
-    ctx.strokeStyle = lapColor(type, totalLaps - 1, totalLaps);
+    ctx.strokeStyle = lapColor(type, totalLaps - 1);
     ctx.lineWidth = SW; ctx.lineCap = 'butt'; ctx.stroke();
   } else {
     const completedLaps = Math.floor(continuousReps / 10);
     const repsInLap = continuousReps - completedLaps * 10;
     const currentFraction = repsInLap / 10;
-    // Draw completed laps as full rings, each a distinct colour
     for (let lap = 0; lap < completedLaps; lap++) {
       ctx.beginPath(); ctx.arc(cx, cy, R, 0, FULL);
-      ctx.strokeStyle = lapColor(type, lap, totalLaps);
+      ctx.strokeStyle = lapColor(type, lap);
       ctx.lineWidth = SW; ctx.lineCap = 'butt'; ctx.stroke();
     }
-    // Current partial lap
     if (currentFraction > 0) {
       ctx.beginPath();
       ctx.arc(cx, cy, R, START, START + FULL * currentFraction);
-      ctx.strokeStyle = lapColor(type, completedLaps, totalLaps);
+      ctx.strokeStyle = lapColor(type, completedLaps);
       ctx.lineWidth = SW; ctx.lineCap = 'round'; ctx.stroke();
     }
   }
 
-  // 12 o'clock dot
   const dotX = cx + R * Math.cos(START), dotY = cy + R * Math.sin(START);
   ctx.beginPath(); ctx.arc(dotX, dotY, SW * 0.22, 0, FULL);
-  const completedLaps2 = Math.min(Math.floor(continuousReps / 10), totalLaps - 1);
-  ctx.fillStyle = continuousReps > 0 ? lapColor(type, completedLaps2, totalLaps) : '#1e3522';
+  const cl2 = Math.min(Math.floor(continuousReps / 10), totalLaps - 1);
+  ctx.fillStyle = continuousReps > 0 ? lapColor(type, cl2) : '#1e3522';
   ctx.fill();
 }
 
@@ -412,6 +474,7 @@ function initWheel(type) {
   const el = document.getElementById(`wheel-${type}`);
   function start(e) {
     e.preventDefault();
+    getAudioCtx(); // ensure audio context is alive on every fresh touch
     if (getToday().rest) return;
     drag[type].active = true;
     syncDrag(type, getToday()[type] || 0);
@@ -435,28 +498,20 @@ function initWheel(type) {
     const prev = today[type] || 0;
     today[type] = newReps;
     today[`${type}C`] = contReps;
+
     if (newReps !== prev) {
       save();
-      if (newReps % 10 === 0 && newReps > 0) {
-        if (navigator.vibrate) navigator.vibrate([30, 10, 30]);
-        pulseWheel(type, true);
-      } else {
-        if (navigator.vibrate) navigator.vibrate(8);
-        pulseWheel(type, false);
-      }
-      
-if (prev < getTarget(type) && newReps >= getTarget(type)) {
+      const crossedLap = (newReps % 10 === 0 && newReps > 0);
+      if (crossedLap) { haptic(); pulseWheel(type, true); }
+
+      if (prev < getTarget(type) && newReps >= getTarget(type)) {
         triggerFlash();
-        // Check if this completes the whole day
-        const today2 = getToday();
-        const bothDone = (today2.a||0) >= getTarget('a') && (today2.b||0) >= getTarget('b');
-        if (bothDone) {
-          playDayComplete();
-        } else {
-          playLapComplete();
-        }
+        const t2 = getToday();
+        const bothDone = (t2.a||0) >= getTarget('a') && (t2.b||0) >= getTarget('b');
+        if (bothDone) playDayComplete(); else playLapComplete();
       }
-    }    
+    }
+
     drawWheel(type, contReps);
     document.getElementById(`count-${type}`).textContent = newReps;
     document.getElementById(`card-${type}`).classList.toggle('done', newReps >= getTarget(type));
@@ -475,12 +530,6 @@ if (prev < getTarget(type) && newReps >= getTarget(type)) {
   window.addEventListener('mouseup',   e => { if (drag[type].active) end(e); });
 }
 
-function removeReps(type) {
-  const today = getToday();
-  today[type] = Math.max((today[type]||0) - 10, 0);
-  today[`${type}C`] = today[type];
-  syncDrag(type, today[type]); save(); renderWheel(type); renderSummary();
-}
 function toggleRest() {
   const today = getToday(); today.rest = !today.rest;
   if (today.rest) { today.a=0; today.b=0; today.aC=0; today.bC=0; }
@@ -495,63 +544,6 @@ function triggerFlash() {
   f.classList.add('show'); setTimeout(() => f.classList.remove('show'), 700);
 }
 
-function pulseWheel(type, strong) {
-  const el = document.getElementById(`wheel-${type}`);
-  const scale = strong ? 'scale(1.12)' : 'scale(1.05)';
-  const duration = strong ? 180 : 100;
-  el.style.transition = 'transform 0.08s ease-out';
-  el.style.transform = scale;
-  setTimeout(() => {
-    el.style.transition = 'transform 0.12s ease-in';
-    el.style.transform = 'scale(1)';
-  }, duration);
-}
-  
-
-  function playLapComplete() {
-  try {
-    const ctx = getAudioCtx();
-    const osc  = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(783.99, ctx.currentTime);
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.2);
-  } catch(e) {}
-}
-  
-
-function playDayComplete() {
-  try {
-    const ctx = getAudioCtx();
-    const notes = [
-      { freq: 523.25, start: 0.00, dur: 0.12 },
-      { freq: 659.25, start: 0.11, dur: 0.12 },
-      { freq: 783.99, start: 0.22, dur: 0.12 },
-      { freq: 1046.5, start: 0.33, dur: 0.40 },
-    ];
-    notes.forEach(({ freq, start, dur }) => {
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
-      gain.gain.setValueAtTime(0, ctx.currentTime + start);
-      gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
-      osc.start(ctx.currentTime + start);
-      osc.stop(ctx.currentTime + start + dur + 0.05);
-    });
-  } catch(e) {}
-}
-  
-  
 // ── Settings ───────────────────────────────────────────────────
 let settingsTempA = null, settingsTempB = null;
 
@@ -592,19 +584,12 @@ function renderActivityGrids() {
     ACTIVITIES.forEach(act => {
       const chip = document.createElement('div');
       chip.className = 'activity-chip';
-      const selA = settingsTempA === act.id;
-      const selB = settingsTempB === act.id;
-      if (type === 'a' && selA) chip.classList.add('selected-a');
-      if (type === 'b' && selB) chip.classList.add('selected-b');
+      if (type === 'a' && settingsTempA === act.id) chip.classList.add('selected-a');
+      if (type === 'b' && settingsTempB === act.id) chip.classList.add('selected-b');
       chip.textContent = act.label;
       chip.onclick = () => {
-        if (type === 'a') {
-          settingsTempA = act.id;
-          document.getElementById('targetLabelA').textContent = act.label;
-        } else {
-          settingsTempB = act.id;
-          document.getElementById('targetLabelB').textContent = act.label;
-        }
+        if (type === 'a') { settingsTempA = act.id; document.getElementById('targetLabelA').textContent = act.label; }
+        else { settingsTempB = act.id; document.getElementById('targetLabelB').textContent = act.label; }
         renderActivityGrids();
       };
       grid.appendChild(chip);
@@ -623,12 +608,10 @@ function rebuildLapDots(type) {
   }
 }
 function updateLapDots(type, reps) {
-  const totalLaps = getTarget(type)/10;
   const completedLaps = Math.floor(reps/10);
   document.getElementById(`laps-${type}`).querySelectorAll('.lap-dot').forEach((dot, i) => {
     dot.classList.toggle('filled', i < completedLaps);
-    if (i < completedLaps) dot.style.background = lapColor(type, i, totalLaps);
-    else dot.style.background = '';
+    dot.style.background = (i < completedLaps) ? lapColor(type, i) : '';
   });
 }
 
@@ -655,10 +638,7 @@ function renderSummary() {
   const wasComplete = document.body.classList.contains('day-complete');
   document.body.classList.toggle('day-complete', dayDone);
   document.getElementById('dayBanner').classList.toggle('show', dayDone);
- 
-  if (dayDone && !wasComplete) {
-    pulseWheel('a', true); pulseWheel('b', true);
-  }
+  if (dayDone && !wasComplete) { pulseWheel('a', true); pulseWheel('b', true); }
 
   const actA = getActivity('a'), actB = getActivity('b');
   document.getElementById('weekLabelA').textContent = actA.short;
@@ -666,20 +646,17 @@ function renderSummary() {
 
   const weekKeys = getWeekKeys();
   const tk = todayKey();
-  let wA=0, wB=0, daysActive=0, streak=0;
-  let daysRemainingInWeek = 0;
+  let wA=0, wB=0, daysActive=0, streak=0, daysRemainingInWeek=0;
 
-  weekKeys.forEach((k, i) => {
+  weekKeys.forEach((k) => {
     const d = state.days[k] || {a:0,b:0,rest:false};
     if (!d.rest) {
       wA += d.a||0; wB += d.b||0;
       const tot = (d.a||0)+(d.b||0);
       if (tot > 0) daysActive++;
-      if ((d.a||0)>=tA && (d.b||0)>=tB) {
-        if (k <= tk) streak++;
-      } else if (k < tk) streak = 0;
+      if ((d.a||0)>=tA && (d.b||0)>=tB) { if (k <= tk) streak++; }
+      else if (k < tk) streak = 0;
     }
-    // Days remaining = days from today onwards (inclusive of today if not yet done)
     if (k >= tk) daysRemainingInWeek++;
   });
 
@@ -694,26 +671,18 @@ function renderSummary() {
   document.getElementById('statsDaysHit').textContent = `${streak} / ${daysActive}`;
   document.getElementById('statsStreak').textContent = streak > 0 ? `${streak} day${streak!==1?'s':''}` : '0 days';
 
-  // Days remaining to still hit weekly target
   const weeklyTarget = dailyTarget * 7;
   const weeklyTotal = wA + wB;
   const repsStillNeeded = Math.max(0, weeklyTarget - weeklyTotal);
-  const daysLeft = daysRemainingInWeek;
   let daysRemainingText = '—';
-  if (repsStillNeeded === 0) {
-    daysRemainingText = 'Week done! 🏆';
-  } else if (daysLeft === 0) {
-    daysRemainingText = 'Week ended';
-  } else {
-    daysRemainingText = `${daysLeft} day${daysLeft!==1?'s':''} left`;
-  }
+  if (repsStillNeeded === 0) daysRemainingText = 'Week done! 🏆';
+  else if (daysRemainingInWeek === 0) daysRemainingText = 'Week ended';
+  else daysRemainingText = `${daysRemainingInWeek} day${daysRemainingInWeek!==1?'s':''} left`;
   document.getElementById('statsDaysRemaining').textContent = daysRemainingText;
 
-  // Weekly target %
-  const weeklyPct = Math.min(Math.round((weeklyTotal / weeklyTarget) * 100), 100);
-  document.getElementById('statsWeeklyPct').textContent = `${weeklyPct}%`;
+  document.getElementById('statsWeeklyPct').textContent =
+    `${Math.min(Math.round((weeklyTotal / weeklyTarget) * 100), 100)}%`;
 
-  // Day strip
   const strip = document.getElementById('dayStrip');
   strip.innerHTML = '';
   weekKeys.forEach((k, i) => {
@@ -723,10 +692,8 @@ function renderSummary() {
     const complete = !d.rest && (d.a||0)>=tA && (d.b||0)>=tB;
     const pct = d.rest ? 0 : Math.min(tot/dailyTarget, 1);
 
-    const cell = document.createElement('div');
-    cell.className = 'day-cell';
-    const lbl = document.createElement('div');
-    lbl.className = 'day-label'; lbl.textContent = DAYS[i];
+    const cell = document.createElement('div'); cell.className = 'day-cell';
+    const lbl = document.createElement('div'); lbl.className = 'day-label'; lbl.textContent = DAYS[i];
     if (isToday) lbl.style.color = 'var(--gold)';
     const barWrap = document.createElement('div'); barWrap.className = 'day-bar-wrap';
     const bar = document.createElement('div');
@@ -761,29 +728,10 @@ function render() {
 initWheel('a'); initWheel('b');
 render();
 
-// Unlock Web Audio on first user gesture (required by iOS Safari)
-let sharedAudioCtx = null;
-
-function getAudioCtx() {
-  if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
-    sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (sharedAudioCtx.state === 'suspended') {
-    sharedAudioCtx.resume();
-  }
-  return sharedAudioCtx;
-}
-
-document.addEventListener('touchstart', function unlockAudio() {
-  getAudioCtx();
-  document.removeEventListener('touchstart', unlockAudio);
-}, true);
-  
-
 // Register service worker for PWA / offline support
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/reps-tracker/sw.js', { scope: '/reps-tracker/' })
+    navigator.serviceWorker.register('/reps-tracker/sw.js', { scope: '/reps-tracker/' });
   });
 }
 </script>
