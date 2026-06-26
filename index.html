@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Reps Tracker</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#f5c518">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Reps Tracker">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1f0f; --card: #122015; --gold: #f5c518;
+    --green-bright: #25b043; --text: #f0ede8;
+    --muted: #6a8a6e; --track: #1e3522; --radius: 20px;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 0 0 48px; overflow-x: hidden;
+    transition: background 0.8s ease;
+  }
+  body.day-complete { --bg: #062e10; --card: #0a3d16; --track: #0f4a1c; --muted: #5aaa6e; background: var(--bg); }
+
+  header {
+    width: 100%; padding: 20px 24px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--track); margin-bottom: 18px; transition: border-color 0.8s;
+  }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .header-title { font-size: 20px; font-weight: 800; color: var(--gold); letter-spacing: 0.02em; }
+  .header-date { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .settings-btn { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 20px; padding: 4px; -webkit-tap-highlight-color: transparent; }
+
+  /* Settings overlay */
+  .settings-overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.65); align-items: flex-end; justify-content: center; }
+  .settings-overlay.open { display: flex; }
+  .settings-sheet { background: #122015; border-radius: 24px 24px 0 0; padding: 28px 24px 48px; width: 100%; max-width: 480px; border-top: 1px solid #1e3522; max-height: 85vh; overflow-y: auto; }
+  .settings-title { font-size: 16px; font-weight: 800; color: var(--gold); margin-bottom: 24px; }
+  .settings-section-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+  .settings-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .settings-label { font-size: 13px; font-weight: 600; color: var(--text); }
+  .settings-sublabel { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .settings-control { display: flex; align-items: center; gap: 12px; }
+  .settings-val { font-size: 22px; font-weight: 800; color: var(--gold); min-width: 40px; text-align: center; }
+  .settings-step { width: 36px; height: 36px; border-radius: 10px; background: var(--track); color: var(--text); border: none; font-size: 20px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent; }
+  .settings-step:active { background: #2a4a30; }
+  .settings-divider { width: 100%; height: 1px; background: var(--track); margin-bottom: 20px; }
+
+  /* Activity picker */
+  .activity-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 20px; }
+  .activity-chip {
+    padding: 10px 6px; border-radius: 10px; border: 1.5px solid var(--track);
+    background: var(--track); color: var(--muted); font-size: 11px; font-weight: 700;
+    text-align: center; cursor: pointer; transition: all 0.15s; text-transform: uppercase;
+    letter-spacing: 0.06em; line-height: 1.3; -webkit-tap-highlight-color: transparent;
+  }
+  .activity-chip.selected-a { border-color: #f5c518; color: #f5c518; background: #2a2008; }
+  .activity-chip.selected-b { border-color: #25b043; color: #25b043; background: #082e12; }
+  .activity-chip:active { opacity: 0.7; }
+  .activity-note { font-size: 11px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+
+  .settings-done { width: 100%; background: var(--gold); color: #0d1f0f; border: none; border-radius: 14px; padding: 14px; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; margin-top: 8px; -webkit-tap-highlight-color: transparent; }
+  .settings-done:active { opacity: 0.85; }
+
+  /* Summary */
+  .summary-strip { width: calc(100% - 48px); background: var(--card); border-radius: var(--radius); padding: 14px 20px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--track); transition: background 0.8s, border-color 0.8s; }
+  .sum-item { text-align: center; }
+  .sum-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 3px; }
+  .sum-val { font-size: 24px; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .sum-val.green { color: var(--green-bright); }
+  .sum-divider { width: 1px; height: 36px; background: var(--track); transition: background 0.8s; }
+
+  .day-banner { width: calc(100% - 48px); background: var(--green-bright); border-radius: 14px; padding: 12px 20px; margin-bottom: 18px; display: none; align-items: center; justify-content: center; gap: 8px; }
+  .day-banner.show { display: flex; }
+  .day-banner-text { font-size: 14px; font-weight: 800; color: #062e10; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* Wheels */
+  .wheels-row { display: flex; gap: 14px; width: calc(100% - 48px); margin-bottom: 18px; }
+  .exercise-card { flex: 1; background: var(--card); border-radius: var(--radius); padding: 18px 12px 14px; display: flex; flex-direction: column; align-items: center; border: 1px solid var(--track); transition: border-color 0.3s, background 0.3s; }
+  .exercise-card.done { background: #0d2214; border-color: var(--green-bright); }
+  .exercise-label { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  .exercise-card.done .exercise-label { color: var(--green-bright); }
+  .wheel-wrap { position: relative; width: 136px; height: 136px; margin-bottom: 12px; touch-action: none; user-select: none; -webkit-tap-highlight-color: transparent; cursor: grab; }
+  .wheel-wrap:active { cursor: grabbing; }
+  .wheel-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .wheel-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+  .wheel-count { font-size: 32px; font-weight: 900; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; transition: color 0.3s; }
+  .exercise-card.done .wheel-count { color: var(--green-bright); }
+  .wheel-of { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .lap-dots { display: flex; gap: 6px; margin-bottom: 12px; }
+  .lap-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--track); transition: background 0.2s, transform 0.15s; }
+  .lap-dot.filled { transform: scale(1.25); }
+  .exercise-card.done .lap-dot.filled { background: var(--green-bright) !important; }
+  .btn-row { display: flex; gap: 8px; width: 100%; }
+  .btn-minus { flex: 1; background: var(--track); color: var(--muted); border: none; border-radius: 10px; padding: 10px 0; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity 0.15s, transform 0.1s; -webkit-tap-highlight-color: transparent; }
+  .btn-minus:active { transform: scale(0.95); opacity: 0.7; }
+
+  .action-row { width: calc(100% - 48px); display: flex; gap: 10px; margin-bottom: 18px; }
+  .rest-btn, .reset-btn { flex: 1; background: var(--card); color: var(--muted); border: 1px solid var(--track); border-radius: 12px; padding: 11px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s; -webkit-tap-highlight-color: transparent; }
+  .rest-btn.active { background: #1a1030; color: #c4b5fd; border-color: #c4b5fd44; }
+
+  /* Weekly progress bar chart */
+  .week-panel { width: calc(100% - 48px); background: var(--card); border-radius: var(--radius); padding: 18px 18px 16px; border: 1px solid var(--track); transition: background 0.8s, border-color 0.8s; margin-bottom: 14px; }
+  .week-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .week-title { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .week-totals { display: flex; gap: 14px; }
+  .week-stat { text-align: center; }
+  .week-stat-num { font-size: 20px; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .week-stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .day-strip { display: flex; gap: 5px; }
+  .day-cell { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .day-label { font-size: 10px; color: var(--muted); font-weight: 600; }
+  .day-bar-wrap { width: 100%; height: 44px; background: var(--track); border-radius: 5px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
+  .day-bar { width: 100%; border-radius: 5px; transition: height 0.4s ease; }
+  .day-bar.today { background: var(--gold); }
+  .day-bar.complete { background: var(--green-bright); }
+  .day-num { font-size: 9px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 12px; }
+
+  /* Weekly stats panel */
+  .week-stats-panel { width: calc(100% - 48px); background: var(--card); border-radius: var(--radius); padding: 18px 18px 16px; border: 1px solid var(--track); transition: background 0.8s, border-color 0.8s; }
+  .stats-title { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; }
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat-card { background: var(--track); border-radius: 12px; padding: 14px 12px; }
+  .stat-card-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+  .stat-card-val { font-size: 22px; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .stat-card-sub { font-size: 10px; color: var(--muted); margin-top: 3px; }
+  .stat-card.highlight .stat-card-val { color: var(--green-bright); }
+  .stats-row-single { background: var(--track); border-radius: 12px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+  .stats-row-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .stats-row-val { font-size: 18px; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .streak-fire { font-size: 16px; margin-right: 4px; }
+
+  .complete-flash { position: fixed; inset: 0; background: rgba(37,176,67,0.15); pointer-events: none; opacity: 0; transition: opacity 0.5s; z-index: 100; }
+  .complete-flash.show { opacity: 1; }
+
+  @media (min-width: 480px) {
+    .wheels-row, .summary-strip, .action-row, .week-panel, .day-banner, .week-stats-panel { max-width: 420px; }
+  }
+</style>
+</head>
+<body>
+<div class="complete-flash" id="flash"></div>
+
+<!-- Settings -->
+<div class="settings-overlay" id="settingsOverlay" onclick="closeSettingsIfOutside(event)">
+  <div class="settings-sheet">
+    <div class="settings-title">⚙️ Settings</div>
+
+    <div class="settings-section-label">Activity A (Gold wheel)</div>
+    <div class="activity-grid" id="activityGridA"></div>
+
+    <div class="settings-section-label">Activity B (Green wheel)</div>
+    <div class="activity-grid" id="activityGridB"></div>
+
+    <div class="activity-note">Tap to select. Gold = left wheel, Green = right wheel.</div>
+    <div class="settings-divider"></div>
+
+    <div class="settings-section-label">Daily Targets</div>
+    <div class="settings-row">
+      <div><div class="settings-label" id="targetLabelA">Activity A</div><div class="settings-sublabel">Reps per day</div></div>
+      <div class="settings-control">
+        <button class="settings-step" onclick="adjustTarget('a',-10)">−</button>
+        <div class="settings-val" id="setAVal">50</div>
+        <button class="settings-step" onclick="adjustTarget('a',10)">+</button>
+      </div>
+    </div>
+    <div class="settings-divider"></div>
+    <div class="settings-row">
+      <div><div class="settings-label" id="targetLabelB">Activity B</div><div class="settings-sublabel">Reps per day</div></div>
+      <div class="settings-control">
+        <button class="settings-step" onclick="adjustTarget('b',-10)">−</button>
+        <div class="settings-val" id="setBVal">50</div>
+        <button class="settings-step" onclick="adjustTarget('b',10)">+</button>
+      </div>
+    </div>
+    <div class="settings-divider"></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">Targets must be multiples of 10. Each lap of the wheel = 10 reps.</div>
+    <button class="settings-done" onclick="closeSettings()">Done</button>
+  </div>
+</div>
+
+<header>
+  <div class="header-left">
+    <span style="font-size:22px;">⚽</span>
+    <div class="header-title">Reps Tracker</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="header-date" id="headerDate"></div>
+    <button class="settings-btn" onclick="openSettings()">⚙️</button>
+  </div>
+</header>
+
+<div class="summary-strip">
+  <div class="sum-item"><div class="sum-label">Today</div><div class="sum-val" id="todayTotal">0</div></div>
+  <div class="sum-divider"></div>
+  <div class="sum-item"><div class="sum-label">Target</div><div class="sum-val" id="dailyTargetDisplay">100</div></div>
+  <div class="sum-divider"></div>
+  <div class="sum-item"><div class="sum-label">This Week</div><div class="sum-val green" id="weekGrand">0</div></div>
+</div>
+
+<div class="day-banner" id="dayBanner">
+  <span style="font-size:18px;">🏆</span>
+  <div class="day-banner-text">Day Complete!</div>
+  <span style="font-size:18px;">🏆</span>
+</div>
+
+<div class="wheels-row">
+  <div class="exercise-card" id="card-a">
+    <div class="exercise-label" id="label-a">Push Ups</div>
+    <div class="wheel-wrap" id="wheel-a">
+      <canvas class="wheel-canvas" id="canvas-a" width="272" height="272"></canvas>
+      <div class="wheel-center">
+        <div class="wheel-count" id="count-a">0</div>
+        <div class="wheel-of" id="of-a">of 50</div>
+      </div>
+    </div>
+    <div class="lap-dots" id="laps-a"></div>
+    <div class="btn-row"><button class="btn-minus" onclick="removeReps('a')">− 10</button></div>
+  </div>
+  <div class="exercise-card" id="card-b">
+    <div class="exercise-label" id="label-b">Sit Ups</div>
+    <div class="wheel-wrap" id="wheel-b">
+      <canvas class="wheel-canvas" id="canvas-b" width="272" height="272"></canvas>
+      <div class="wheel-center">
+        <div class="wheel-count" id="count-b">0</div>
+        <div class="wheel-of" id="of-b">of 50</div>
+      </div>
+    </div>
+    <div class="lap-dots" id="laps-b"></div>
+    <div class="btn-row"><button class="btn-minus" onclick="removeReps('b')">− 10</button></div>
+  </div>
+</div>
+
+<div class="action-row">
+  <button class="rest-btn" id="restBtn" onclick="toggleRest()">Rest Day</button>
+  <button class="reset-btn" onclick="confirmReset()">Reset Today</button>
+</div>
+
+<div class="week-panel">
+  <div class="week-header">
+    <span class="week-title">Weekly Progress</span>
+    <div class="week-totals">
+      <div class="week-stat"><div class="week-stat-num" id="weekA">0</div><div class="week-stat-label" id="weekLabelA">Push</div></div>
+      <div class="week-stat"><div class="week-stat-num" id="weekB">0</div><div class="week-stat-label" id="weekLabelB">Sit</div></div>
+    </div>
+  </div>
+  <div class="day-strip" id="dayStrip"></div>
+</div>
+
+<div class="week-stats-panel">
+  <div class="stats-title">Weekly Stats</div>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-card-label" id="statsLabelA">Push Ups</div>
+      <div class="stat-card-val" id="statsWeekA">0</div>
+      <div class="stat-card-sub">this week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-label" id="statsLabelB">Sit Ups</div>
+      <div class="stat-card-val" id="statsWeekB">0</div>
+      <div class="stat-card-sub">this week</div>
+    </div>
+    <div class="stat-card highlight">
+      <div class="stat-card-label">Total Reps</div>
+      <div class="stat-card-val" id="statsTotal">0</div>
+      <div class="stat-card-sub">this week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-label">Days Hit</div>
+      <div class="stat-card-val" id="statsDaysHit">0 / 0</div>
+      <div class="stat-card-sub">target achieved</div>
+    </div>
+  </div>
+  <div class="stats-row-single">
+    <div class="stats-row-label"><span class="streak-fire">🔥</span>Current Streak</div>
+    <div class="stats-row-val" id="statsStreak">0 days</div>
+  </div>
+  <div class="stats-row-single" style="margin-top:10px;">
+    <div class="stats-row-label">📅 Days Remaining</div>
+    <div class="stats-row-val" id="statsDaysRemaining">—</div>
+  </div>
+  <div class="stats-row-single" style="margin-top:10px;">
+    <div class="stats-row-label">🎯 Weekly Target</div>
+    <div class="stats-row-val" id="statsWeeklyPct">0%</div>
+  </div>
+</div>
+
+<script>
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const DEG_PER_REP = 36;
+
+const ACTIVITIES = [
+  { id: 'pushups',  label: 'Push Ups',  short: 'Push' },
+  { id: 'situps',   label: 'Sit Ups',   short: 'Sit'  },
+  { id: 'squats',   label: 'Squats',    short: 'Squat' },
+  { id: 'chinups',  label: 'Chin Ups',  short: 'Chin' },
+  { id: 'planks',   label: 'Planks',    short: 'Plank' },
+  { id: 'lunges',   label: 'Lunges',    short: 'Lunge' },
+];
+
+// Clearly distinct lap colour palettes
+// A (gold wheel): gold shades — dark gold -> bright gold -> orange gold -> yellow -> cream gold
+const LAP_COLORS_A = ['#c47f00','#e0a800','#f5c518','#ffe066','#fff0a0'];
+// B (green wheel): green shades — dark green -> mid green -> bright green -> lime -> yellow green
+const LAP_COLORS_B = ['#0a5c1e','#0f8c2c','#25b043','#4dd966','#a0f0a0'];
+
+function lapColor(type, lapIndex, totalLaps) {
+  const palette = type === 'a' ? LAP_COLORS_A : LAP_COLORS_B;
+  const idx = Math.min(lapIndex, palette.length - 1);
+  return palette[idx];
+}
+
+// ── State ──────────────────────────────────────────────────────
+let state = (() => {
+  try {
+    const r = localStorage.getItem('tracker_soc6');
+    return r ? JSON.parse(r) : null;
+  } catch { return null; }
+})() || {
+  days: {},
+  targets: { a: 50, b: 50 },
+  activities: { a: 'pushups', b: 'situps' }
+};
+if (!state.targets)    state.targets    = { a: 50, b: 50 };
+if (!state.activities) state.activities = { a: 'pushups', b: 'situps' };
+
+function save() { try { localStorage.setItem('tracker_soc6', JSON.stringify(state)); } catch {} }
+function getTarget(type) { return state.targets[type] || 50; }
+function getActivity(type) { return ACTIVITIES.find(a => a.id === state.activities[type]) || ACTIVITIES[type==='a'?0:1]; }
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+}
+function getWeekKeys() {
+  const now = new Date(), monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday); d.setDate(monday.getDate() + i);
+    return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+  });
+}
+function getToday() {
+  const k = todayKey();
+  if (!state.days[k]) state.days[k] = { a: 0, b: 0, rest: false };
+  return state.days[k];
+}
+
+// ── Canvas drawing ─────────────────────────────────────────────
+function drawWheel(type, continuousReps) {
+  const canvas = document.getElementById(`canvas-${type}`);
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, cx = W/2, cy = W/2;
+  const R = W * 0.41, SW = W * 0.088;
+  ctx.clearRect(0, 0, W, W);
+
+  const target = getTarget(type);
+  const totalLaps = target / 10;
+  const done = continuousReps >= target;
+  const START = -Math.PI / 2, FULL = Math.PI * 2;
+
+  // Track
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, FULL);
+  ctx.strokeStyle = '#1e3522'; ctx.lineWidth = SW; ctx.lineCap = 'butt'; ctx.stroke();
+
+  if (done) {
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, FULL);
+    ctx.strokeStyle = lapColor(type, totalLaps - 1, totalLaps);
+    ctx.lineWidth = SW; ctx.lineCap = 'butt'; ctx.stroke();
+  } else {
+    const completedLaps = Math.floor(continuousReps / 10);
+    const repsInLap = continuousReps - completedLaps * 10;
+    const currentFraction = repsInLap / 10;
+    // Draw completed laps as full rings, each a distinct colour
+    for (let lap = 0; lap < completedLaps; lap++) {
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, FULL);
+      ctx.strokeStyle = lapColor(type, lap, totalLaps);
+      ctx.lineWidth = SW; ctx.lineCap = 'butt'; ctx.stroke();
+    }
+    // Current partial lap
+    if (currentFraction > 0) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, START, START + FULL * currentFraction);
+      ctx.strokeStyle = lapColor(type, completedLaps, totalLaps);
+      ctx.lineWidth = SW; ctx.lineCap = 'round'; ctx.stroke();
+    }
+  }
+
+  // 12 o'clock dot
+  const dotX = cx + R * Math.cos(START), dotY = cy + R * Math.sin(START);
+  ctx.beginPath(); ctx.arc(dotX, dotY, SW * 0.22, 0, FULL);
+  const completedLaps2 = Math.min(Math.floor(continuousReps / 10), totalLaps - 1);
+  ctx.fillStyle = continuousReps > 0 ? lapColor(type, completedLaps2, totalLaps) : '#1e3522';
+  ctx.fill();
+}
+
+// ── Drag ───────────────────────────────────────────────────────
+const drag = { a: { active:false, lastAngle:null, totalDeg:0 }, b: { active:false, lastAngle:null, totalDeg:0 } };
+
+function getPointerAngle(el, cx, cy) {
+  const r = el.getBoundingClientRect();
+  return Math.atan2(cy - (r.top+r.height/2), cx - (r.left+r.width/2)) * 180 / Math.PI;
+}
+function syncDrag(type, reps) { drag[type].totalDeg = reps * DEG_PER_REP; }
+
+function initWheel(type) {
+  const el = document.getElementById(`wheel-${type}`);
+  function start(e) {
+    e.preventDefault();
+    if (getToday().rest) return;
+    drag[type].active = true;
+    syncDrag(type, getToday()[type] || 0);
+    const pt = e.touches ? e.touches[0] : e;
+    drag[type].lastAngle = getPointerAngle(el, pt.clientX, pt.clientY);
+  }
+  function move(e) {
+    e.preventDefault();
+    const d = drag[type];
+    if (!d.active) return;
+    const today = getToday();
+    const pt = e.touches ? e.touches[0] : e;
+    const angle = getPointerAngle(el, pt.clientX, pt.clientY);
+    let delta = angle - d.lastAngle;
+    if (delta > 180) delta -= 360; if (delta < -180) delta += 360;
+    d.lastAngle = angle;
+    d.totalDeg = Math.max(0, d.totalDeg + delta);
+    const maxDeg = getTarget(type) * DEG_PER_REP;
+    const contReps = Math.min(d.totalDeg, maxDeg) / DEG_PER_REP;
+    const newReps = Math.min(Math.floor(contReps), getTarget(type));
+    const prev = today[type] || 0;
+    today[type] = newReps;
+    today[`${type}C`] = contReps;
+    if (newReps !== prev) { save(); if (prev < getTarget(type) && newReps >= getTarget(type)) triggerFlash(); }
+    drawWheel(type, contReps);
+    document.getElementById(`count-${type}`).textContent = newReps;
+    document.getElementById(`card-${type}`).classList.toggle('done', newReps >= getTarget(type));
+    updateLapDots(type, newReps);
+    renderSummary();
+  }
+  function end(e) {
+    e.preventDefault(); drag[type].active = false;
+    const today = getToday(); today[`${type}C`] = today[type] || 0; save(); renderWheel(type);
+  }
+  el.addEventListener('touchstart', start, {passive:false});
+  el.addEventListener('touchmove',  move,  {passive:false});
+  el.addEventListener('touchend',   end,   {passive:false});
+  el.addEventListener('mousedown',  start);
+  window.addEventListener('mousemove', e => { if (drag[type].active) move(e); });
+  window.addEventListener('mouseup',   e => { if (drag[type].active) end(e); });
+}
+
+function removeReps(type) {
+  const today = getToday();
+  today[type] = Math.max((today[type]||0) - 10, 0);
+  today[`${type}C`] = today[type];
+  syncDrag(type, today[type]); save(); renderWheel(type); renderSummary();
+}
+function toggleRest() {
+  const today = getToday(); today.rest = !today.rest;
+  if (today.rest) { today.a=0; today.b=0; today.aC=0; today.bC=0; }
+  save(); render();
+}
+function confirmReset() {
+  state.days[todayKey()] = {a:0,b:0,rest:false,aC:0,bC:0};
+  drag.a.totalDeg=0; drag.b.totalDeg=0; save(); render();
+}
+function triggerFlash() {
+  const f = document.getElementById('flash');
+  f.classList.add('show'); setTimeout(() => f.classList.remove('show'), 700);
+}
+
+// ── Settings ───────────────────────────────────────────────────
+let settingsTempA = null, settingsTempB = null;
+
+function openSettings() {
+  settingsTempA = state.activities.a;
+  settingsTempB = state.activities.b;
+  document.getElementById('setAVal').textContent = getTarget('a');
+  document.getElementById('setBVal').textContent = getTarget('b');
+  document.getElementById('targetLabelA').textContent = getActivity('a').label;
+  document.getElementById('targetLabelB').textContent = getActivity('b').label;
+  renderActivityGrids();
+  document.getElementById('settingsOverlay').classList.add('open');
+}
+function closeSettings() {
+  state.activities.a = settingsTempA;
+  state.activities.b = settingsTempB;
+  save();
+  document.getElementById('settingsOverlay').classList.remove('open');
+  render();
+}
+function closeSettingsIfOutside(e) {
+  if (e.target === document.getElementById('settingsOverlay')) closeSettings();
+}
+function adjustTarget(type, delta) {
+  const k = type === 'a' ? 'a' : 'b';
+  const next = Math.max(10, Math.min(100, getTarget(k) + delta));
+  state.targets[k] = next;
+  save();
+  document.getElementById(`set${type==='a'?'A':'B'}Val`).textContent = next;
+  const today = getToday();
+  if ((today[k]||0) > next) { today[k]=next; today[`${k}C`]=next; save(); }
+}
+function renderActivityGrids() {
+  ['A','B'].forEach(slot => {
+    const type = slot.toLowerCase();
+    const grid = document.getElementById(`activityGrid${slot}`);
+    grid.innerHTML = '';
+    ACTIVITIES.forEach(act => {
+      const chip = document.createElement('div');
+      chip.className = 'activity-chip';
+      const selA = settingsTempA === act.id;
+      const selB = settingsTempB === act.id;
+      if (type === 'a' && selA) chip.classList.add('selected-a');
+      if (type === 'b' && selB) chip.classList.add('selected-b');
+      chip.textContent = act.label;
+      chip.onclick = () => {
+        if (type === 'a') {
+          settingsTempA = act.id;
+          document.getElementById('targetLabelA').textContent = act.label;
+        } else {
+          settingsTempB = act.id;
+          document.getElementById('targetLabelB').textContent = act.label;
+        }
+        renderActivityGrids();
+      };
+      grid.appendChild(chip);
+    });
+  });
+}
+
+// ── Lap dots ───────────────────────────────────────────────────
+function rebuildLapDots(type) {
+  const container = document.getElementById(`laps-${type}`);
+  container.innerHTML = '';
+  for (let i = 0; i < getTarget(type)/10; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'lap-dot';
+    container.appendChild(dot);
+  }
+}
+function updateLapDots(type, reps) {
+  const totalLaps = getTarget(type)/10;
+  const completedLaps = Math.floor(reps/10);
+  document.getElementById(`laps-${type}`).querySelectorAll('.lap-dot').forEach((dot, i) => {
+    dot.classList.toggle('filled', i < completedLaps);
+    if (i < completedLaps) dot.style.background = lapColor(type, i, totalLaps);
+    else dot.style.background = '';
+  });
+}
+
+// ── Render ─────────────────────────────────────────────────────
+function renderWheel(type) {
+  const today = getToday(), val = today[type]||0;
+  const contVal = today[`${type}C`] ?? val;
+  drawWheel(type, contVal);
+  document.getElementById(`count-${type}`).textContent = val;
+  document.getElementById(`of-${type}`).textContent = `of ${getTarget(type)}`;
+  document.getElementById(`card-${type}`).classList.toggle('done', val >= getTarget(type));
+  updateLapDots(type, val);
+}
+
+function renderSummary() {
+  const today = getToday();
+  const tA = getTarget('a'), tB = getTarget('b');
+  const dailyTarget = tA + tB;
+  const total = (today.a||0) + (today.b||0);
+  const dayDone = !today.rest && (today.a||0) >= tA && (today.b||0) >= tB;
+
+  document.getElementById('todayTotal').textContent = total;
+  document.getElementById('dailyTargetDisplay').textContent = dailyTarget;
+  document.body.classList.toggle('day-complete', dayDone);
+  document.getElementById('dayBanner').classList.toggle('show', dayDone);
+
+  const actA = getActivity('a'), actB = getActivity('b');
+  document.getElementById('weekLabelA').textContent = actA.short;
+  document.getElementById('weekLabelB').textContent = actB.short;
+
+  const weekKeys = getWeekKeys();
+  const tk = todayKey();
+  let wA=0, wB=0, daysActive=0, streak=0;
+  let daysRemainingInWeek = 0;
+
+  weekKeys.forEach((k, i) => {
+    const d = state.days[k] || {a:0,b:0,rest:false};
+    if (!d.rest) {
+      wA += d.a||0; wB += d.b||0;
+      const tot = (d.a||0)+(d.b||0);
+      if (tot > 0) daysActive++;
+      if ((d.a||0)>=tA && (d.b||0)>=tB) {
+        if (k <= tk) streak++;
+      } else if (k < tk) streak = 0;
+    }
+    // Days remaining = days from today onwards (inclusive of today if not yet done)
+    if (k >= tk) daysRemainingInWeek++;
+  });
+
+  document.getElementById('weekA').textContent = wA;
+  document.getElementById('weekB').textContent = wB;
+  document.getElementById('weekGrand').textContent = wA + wB;
+  document.getElementById('statsWeekA').textContent = wA;
+  document.getElementById('statsWeekB').textContent = wB;
+  document.getElementById('statsLabelA').textContent = actA.label;
+  document.getElementById('statsLabelB').textContent = actB.label;
+  document.getElementById('statsTotal').textContent = wA + wB;
+  document.getElementById('statsDaysHit').textContent = `${streak} / ${daysActive}`;
+  document.getElementById('statsStreak').textContent = streak > 0 ? `${streak} day${streak!==1?'s':''}` : '0 days';
+
+  // Days remaining to still hit weekly target
+  const weeklyTarget = dailyTarget * 7;
+  const weeklyTotal = wA + wB;
+  const repsStillNeeded = Math.max(0, weeklyTarget - weeklyTotal);
+  const daysLeft = daysRemainingInWeek;
+  let daysRemainingText = '—';
+  if (repsStillNeeded === 0) {
+    daysRemainingText = 'Week done! 🏆';
+  } else if (daysLeft === 0) {
+    daysRemainingText = 'Week ended';
+  } else {
+    daysRemainingText = `${daysLeft} day${daysLeft!==1?'s':''} left`;
+  }
+  document.getElementById('statsDaysRemaining').textContent = daysRemainingText;
+
+  // Weekly target %
+  const weeklyPct = Math.min(Math.round((weeklyTotal / weeklyTarget) * 100), 100);
+  document.getElementById('statsWeeklyPct').textContent = `${weeklyPct}%`;
+
+  // Day strip
+  const strip = document.getElementById('dayStrip');
+  strip.innerHTML = '';
+  weekKeys.forEach((k, i) => {
+    const d = state.days[k] || {a:0,b:0,rest:false};
+    const tot = (d.a||0)+(d.b||0);
+    const isToday = k === tk;
+    const complete = !d.rest && (d.a||0)>=tA && (d.b||0)>=tB;
+    const pct = d.rest ? 0 : Math.min(tot/dailyTarget, 1);
+
+    const cell = document.createElement('div');
+    cell.className = 'day-cell';
+    const lbl = document.createElement('div');
+    lbl.className = 'day-label'; lbl.textContent = DAYS[i];
+    if (isToday) lbl.style.color = 'var(--gold)';
+    const barWrap = document.createElement('div'); barWrap.className = 'day-bar-wrap';
+    const bar = document.createElement('div');
+    bar.className = 'day-bar'+(isToday?' today':'')+(complete?' complete':'');
+    bar.style.height = d.rest?'100%':`${Math.max(pct*100,0)}%`;
+    if (d.rest) { bar.style.background='#1a1030'; bar.style.opacity='0.6'; }
+    else if (!complete && !isToday && tot>0) bar.style.background='#7a6209';
+    barWrap.appendChild(bar);
+    const num = document.createElement('div'); num.className = 'day-num';
+    if (d.rest) { num.textContent='Rest'; num.style.color='#c4b5fd'; }
+    else num.textContent = tot>0?tot:'';
+    cell.appendChild(lbl); cell.appendChild(barWrap); cell.appendChild(num);
+    strip.appendChild(cell);
+  });
+}
+
+function render() {
+  document.getElementById('headerDate').textContent =
+    new Date().toLocaleDateString('en-AU', {weekday:'short',day:'numeric',month:'short'});
+  const actA = getActivity('a'), actB = getActivity('b');
+  document.getElementById('label-a').textContent = actA.label;
+  document.getElementById('label-b').textContent = actB.label;
+  const today = getToday();
+  const rb = document.getElementById('restBtn');
+  rb.classList.toggle('active', !!today.rest);
+  rb.textContent = today.rest ? 'Rest Day ✓' : 'Rest Day';
+  rebuildLapDots('a'); rebuildLapDots('b');
+  renderWheel('a'); renderWheel('b');
+  renderSummary();
+}
+
+initWheel('a'); initWheel('b');
+render();
+
+// Register service worker for PWA / offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
