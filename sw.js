@@ -1,4 +1,4 @@
-const CACHE = 'reps-tracker-v1';
+const CACHE = 'reps-tracker-v3';
 const ASSETS = [
   '/reps-tracker/',
   '/reps-tracker/index.html',
