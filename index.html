@@ -340,6 +340,20 @@ function playLapComplete() {
   osc.stop(ctx.currentTime + 0.2);
 }
 
+function playLapTick() {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(1200, ctx.currentTime);
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.07);
+}
+
 function playDayComplete() {
   const ctx = getAudioCtx();
   if (!ctx) return;
@@ -502,9 +516,14 @@ function initWheel(type) {
     if (newReps !== prev) {
       save();
       const crossedLap = (newReps % 10 === 0 && newReps > 0);
-      if (crossedLap) { haptic(); pulseWheel(type, true); }
+      const reachedTarget = (prev < getTarget(type) && newReps >= getTarget(type));
+      if (crossedLap) {
+        pulseWheel(type, true);
+        haptic();
+        if (!reachedTarget) playLapTick();
+      }
 
-      if (prev < getTarget(type) && newReps >= getTarget(type)) {
+      if (reachedTarget) {
         triggerFlash();
         const t2 = getToday();
         const bothDone = (t2.a||0) >= getTarget('a') && (t2.b||0) >= getTarget('b');
