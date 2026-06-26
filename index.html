@@ -447,9 +447,17 @@ function initWheel(type) {
       
 if (prev < getTarget(type) && newReps >= getTarget(type)) {
         triggerFlash();
-        playCelebration();
+        // Check if this completes the whole day
+        const today2 = getToday();
+        const bothDone = (today2.a||0) >= getTarget('a') && (today2.b||0) >= getTarget('b');
+        if (bothDone) {
+          playDayComplete();
+        } else {
+          playLapComplete();
+        }
       }
-    }    drawWheel(type, contReps);
+    }    
+    drawWheel(type, contReps);
     document.getElementById(`count-${type}`).textContent = newReps;
     document.getElementById(`card-${type}`).classList.toggle('done', newReps >= getTarget(type));
     updateLapDots(type, newReps);
@@ -495,7 +503,29 @@ function pulseWheel(type, strong) {
   }, strong ? 120 : 80);
 }
   
-function playCelebration() {
+
+  function playLapComplete() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioCtx();
+    ctx.resume().then(() => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(783.99, ctx.currentTime);
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.2);
+      setTimeout(() => ctx.close(), 500);
+    });
+  } catch(e) {}
+}
+
+function playDayComplete() {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     const ctx = new AudioCtx();
@@ -504,7 +534,7 @@ function playCelebration() {
         { freq: 523.25, start: 0.00, dur: 0.12 },
         { freq: 659.25, start: 0.11, dur: 0.12 },
         { freq: 783.99, start: 0.22, dur: 0.12 },
-        { freq: 1046.5, start: 0.33, dur: 0.35 },
+        { freq: 1046.5, start: 0.33, dur: 0.40 },
       ];
       notes.forEach(({ freq, start, dur }) => {
         const osc  = ctx.createOscillator();
@@ -519,7 +549,7 @@ function playCelebration() {
         osc.start(ctx.currentTime + start);
         osc.stop(ctx.currentTime + start + dur + 0.05);
       });
-      setTimeout(() => ctx.close(), 1000);
+      setTimeout(() => ctx.close(), 1200);
     });
   } catch(e) {}
 }
@@ -627,8 +657,8 @@ function renderSummary() {
   const wasComplete = document.body.classList.contains('day-complete');
   document.body.classList.toggle('day-complete', dayDone);
   document.getElementById('dayBanner').classList.toggle('show', dayDone);
+ 
   if (dayDone && !wasComplete) {
-    if (navigator.vibrate) navigator.vibrate([50, 30, 50, 30, 100]);
     pulseWheel('a', true); pulseWheel('b', true);
   }
 
