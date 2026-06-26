@@ -1,8 +1,10 @@
 const CACHE = 'reps-tracker-v1';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json'
+  '/reps-tracker/',
+  '/reps-tracker/index.html',
+  '/reps-tracker/manifest.json',
+  '/reps-tracker/icons/icon-192.png',
+  '/reps-tracker/icons/icon-512.png'
 ];
 
 self.addEventListener('install', e => {
