@@ -494,65 +494,63 @@ function triggerFlash() {
   const f = document.getElementById('flash');
   f.classList.add('show'); setTimeout(() => f.classList.remove('show'), 700);
 }
+
 function pulseWheel(type, strong) {
   const el = document.getElementById(`wheel-${type}`);
-  el.style.transform = strong ? 'scale(1.06)' : 'scale(1.02)';
-  el.style.transition = 'transform 0.06s ease';
+  const scale = strong ? 'scale(1.12)' : 'scale(1.05)';
+  const duration = strong ? 180 : 100;
+  el.style.transition = 'transform 0.08s ease-out';
+  el.style.transform = scale;
   setTimeout(() => {
+    el.style.transition = 'transform 0.12s ease-in';
     el.style.transform = 'scale(1)';
-  }, strong ? 120 : 80);
+  }, duration);
 }
   
 
   function playLapComplete() {
   try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioCtx();
-    ctx.resume().then(() => {
+    const ctx = getAudioCtx();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(783.99, ctx.currentTime);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.2);
+  } catch(e) {}
+}
+  
+
+function playDayComplete() {
+  try {
+    const ctx = getAudioCtx();
+    const notes = [
+      { freq: 523.25, start: 0.00, dur: 0.12 },
+      { freq: 659.25, start: 0.11, dur: 0.12 },
+      { freq: 783.99, start: 0.22, dur: 0.12 },
+      { freq: 1046.5, start: 0.33, dur: 0.40 },
+    ];
+    notes.forEach(({ freq, start, dur }) => {
       const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(783.99, ctx.currentTime);
-      gain.gain.setValueAtTime(0, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.2);
-      setTimeout(() => ctx.close(), 500);
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+      gain.gain.setValueAtTime(0, ctx.currentTime + start);
+      gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur + 0.05);
     });
   } catch(e) {}
 }
-
-function playDayComplete() {
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioCtx();
-    ctx.resume().then(() => {
-      const notes = [
-        { freq: 523.25, start: 0.00, dur: 0.12 },
-        { freq: 659.25, start: 0.11, dur: 0.12 },
-        { freq: 783.99, start: 0.22, dur: 0.12 },
-        { freq: 1046.5, start: 0.33, dur: 0.40 },
-      ];
-      notes.forEach(({ freq, start, dur }) => {
-        const osc  = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
-        gain.gain.setValueAtTime(0, ctx.currentTime + start);
-        gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
-        osc.start(ctx.currentTime + start);
-        osc.stop(ctx.currentTime + start + dur + 0.05);
-      });
-      setTimeout(() => ctx.close(), 1200);
-    });
-  } catch(e) {}
-}
+  
   
 // ── Settings ───────────────────────────────────────────────────
 let settingsTempA = null, settingsTempB = null;
@@ -764,19 +762,23 @@ initWheel('a'); initWheel('b');
 render();
 
 // Unlock Web Audio on first user gesture (required by iOS Safari)
-let audioUnlocked = false;
+let sharedAudioCtx = null;
+
+function getAudioCtx() {
+  if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+    sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (sharedAudioCtx.state === 'suspended') {
+    sharedAudioCtx.resume();
+  }
+  return sharedAudioCtx;
+}
+
 document.addEventListener('touchstart', function unlockAudio() {
-  if (audioUnlocked) return;
-  audioUnlocked = true;
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const buf = ctx.createBuffer(1, 1, 22050);
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.connect(ctx.destination);
-  src.start(0);
-  ctx.close();
+  getAudioCtx();
   document.removeEventListener('touchstart', unlockAudio);
 }, true);
+  
 
 // Register service worker for PWA / offline support
 if ('serviceWorker' in navigator) {
